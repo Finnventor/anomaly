@@ -1,5 +1,5 @@
 from math import pi, sin, cos, tan, atan2, log, copysign
-from traceback import format_exc
+from traceback import format_exception
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -13,6 +13,7 @@ use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.patches import Polygon
 from matplotlib.collections import PatchCollection
+from matplotlib.cm import get_cmap
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk as Navigation
 
@@ -212,6 +213,7 @@ class Window(tk.Tk):
 
         self.polygons = []
         self.stations = []
+        self.cb = None
 
         self.canvas = _MplCanvas(self)
         self.canvas.grid(row=0, column=0, sticky="nsew")
@@ -240,20 +242,18 @@ class Window(tk.Tk):
 
 
     def loadpoly(self):
-        try:
-            self.polygons = loadpoly(askopenfilename())
-        except Exception:
-            msgbox.showerror(self.window_title, "An error occurred.\n\n" + format_exc())
-            raise
+        filename = askopenfilename(title=self.window_title+" - Load Polygon File")
+        if not filename:
+            return
+        self.polygons = loadpoly(filename)
 
         self.update()
 
     def loadstations(self):
-        try:
-            self.stations = loadstations(askopenfilename())
-        except Exception:
-            msgbox.showerror(self.window_title, "An error occurred.\n\n" + format_exc())
-            raise
+        filename = askopenfilename(title=self.window_title+" - Load Station File")
+        if not filename:
+            return
+        self.stations = loadstations(filename)
 
         self.update()
 
@@ -265,13 +265,18 @@ class Window(tk.Tk):
         ax.plot(*zip(*self.stations), color="black", marker=".", linestyle="")
 
         if self.polygons:
-            for polygon in self.polygons:
-                patches.append(Polygon(polygon[0], False))
-                densities.append(polygon[1])
-            p = PatchCollection(patches)
+            cmap = get_cmap("viridis_r")
+            for polygon, density in self.polygons:
+                patches.append(Polygon(polygon, False))
+                densities.append(density)
+
+            p = PatchCollection(patches, cmap=cmap)
             p.set_array(np.array(densities))
             ax.add_collection(p)
             ax.autoscale_view()
+            if self.cb:
+                self.cb.remove()
+            self.cb = fig.colorbar(p, label="Density")
             if self.stations:
                 an = anomaly(self.polygons, self.stations, con=self.units_con[self.unit.get()])
                 for station, a in zip(self.stations, an):
@@ -281,10 +286,11 @@ class Window(tk.Tk):
                     ax.annotate("", xy=(station[0], station[1]+a), xytext=station,
                         arrowprops=dict(arrowstyle="->"))
 
-
-
         ax.invert_yaxis()
         self.canvas.draw()
+
+    def report_callback_exception(self, exc, val, tb):
+        msgbox.showerror(self.window_title, f"An error occurred:\n\n{''.join(format_exception(exc, val, tb))}")
 
 
 if __name__ == '__main__':
